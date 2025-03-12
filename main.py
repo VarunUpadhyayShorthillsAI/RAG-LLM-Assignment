@@ -1,6 +1,6 @@
+import os
 import requests
 from bs4 import BeautifulSoup
-import os
 
 BASE_URL = "https://medlineplus.gov/ency/"
 
@@ -13,9 +13,12 @@ def extract_text(html):
 
     # Extract article title
     title_tag = soup.find("h1", class_="with-also", itemprop="name")
-    article_title = title_tag.get_text(strip=True) if title_tag else "Title not found"
+    article_title = title_tag.get_text(strip=True) if title_tag else "Untitled"
 
-    extracted_text = {"Title": article_title}
+    # Remove any invalid filename characters
+    safe_title = "".join(c for c in article_title if c.isalnum() or c in " _-").strip()
+
+    extracted_text = {"Title": safe_title}
 
     # Extract all sections dynamically
     for section in soup.find_all("div", class_="section"):
@@ -32,18 +35,20 @@ def extract_text(html):
 
             extracted_text[section_title] = section_content
 
-    return extracted_text
+    return safe_title, extracted_text
 
-def save_to_txt(data, filename):
-    """Save extracted data to a text file."""
-    os.makedirs("articles", exist_ok=True)  # Ensure the folder exists
-    filepath = os.path.join("articles", f"{filename}.txt")
+def save_to_file(alphabet, title, content):
+    folder_path = os.path.join("articles", alphabet)  # Create folder per alphabet
+    os.makedirs(folder_path, exist_ok=True)  # Ensure folder exists
 
-    with open(filepath, "w", encoding="utf-8") as file:
-        for section, text in data.items():
-            file.write(f"{section}\n{text}\n\n")
+    file_path = os.path.join(folder_path, f"{title}.txt")
 
-    print(f"Saved: {filepath}")
+    with open(file_path, "w", encoding="utf-8") as file:
+        for section, text in content.items():
+            file.write(f"\n{section}\n{text}\n")  # Remove the underline
+
+    print(f"Saved: {file_path}")
+
 
 def get_article_links(alphabet):
     url = f"{BASE_URL}encyclopedia_{alphabet}.htm"
@@ -75,6 +80,5 @@ if __name__ == "__main__":
             html = fetch_page(link)
 
             if html:
-                extracted_text = extract_text(html)
-                article_name = extracted_text.get("Title", "Unknown_Article").replace(" ", "_")
-                save_to_txt(extracted_text, article_name)
+                title, extracted_text = extract_text(html)
+                save_to_file(alphabet, title, extracted_text)
