@@ -2,16 +2,11 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import numpy as np
+from sentence_transformers import SentenceTransformer
 import faiss
 import pickle
-from sentence_transformers import SentenceTransformer
 
 BASE_URL = "https://medlineplus.gov/ency/"
-INDEX_PATH = "medical_index.faiss"
-METADATA_PATH = "metadata.pickle"
-MODEL_NAME = "all-MiniLM-L6-v2"
-
-# ========================== SCRAPING ARTICLES ==========================
 
 def fetch_page(url):
     response = requests.get(url)
@@ -19,11 +14,13 @@ def fetch_page(url):
 
 def extract_text(html):
     soup = BeautifulSoup(html, "html.parser")
-
+    
+    # Extract article title
     title_tag = soup.find("h1", class_="with-also", itemprop="name")
     article_title = title_tag.get_text(strip=True) if title_tag else "Untitled"
     safe_title = "".join(c for c in article_title if c.isalnum() or c in " _-").strip()
-    extracted_text = {"Title": safe_title}
+
+    extracted_text = [f"Title: {safe_title}"]
 
     for section in soup.find_all("div", class_="section"):
         title_div = section.find("div", class_="section-title")
@@ -32,22 +29,21 @@ def extract_text(html):
         if title_div and body_div:
             section_title = title_div.get_text(strip=True)
             section_content = body_div.get_text(" ", strip=True)
-
+            
             if any(exclude in section_title.lower() for exclude in ["images", "references", "review date"]):
                 continue
 
-            extracted_text[section_title] = section_content
+            extracted_text.append(f"\n{section_title}\n{section_content}")
 
-    return safe_title, extracted_text
+    return safe_title, "\n".join(extracted_text)
 
 def save_to_file(alphabet, title, content):
     folder_path = os.path.join("articles", alphabet)
     os.makedirs(folder_path, exist_ok=True)
-
     file_path = os.path.join(folder_path, f"{title}.txt")
+
     with open(file_path, "w", encoding="utf-8") as file:
-        for section, text in content.items():
-            file.write(f"\n{section}\n{text}\n")
+        file.write(content)
 
     print(f"Saved: {file_path}")
 
@@ -69,150 +65,102 @@ def get_article_links(alphabet):
 
     return article_links
 
-def process_alphabet(alphabet):
-    print(f"\nProcessing articles for: {alphabet}")
-    article_links = get_article_links(alphabet)
+def scrape_alphabets(alphabets):
+    for alphabet in alphabets:
+        print(f"\nProcessing articles for: {alphabet}")
+        article_links = get_article_links(alphabet)
 
-    if not article_links:
-        print("No articles found.")
-        return
-    
-    for link in article_links:
-        print(f"Extracting from: {link}")
-        html = fetch_page(link)
+        for link in article_links:
+            print(f"Extracting from: {link}")
+            html = fetch_page(link)
 
-        if html:
-            title, extracted_text = extract_text(html)
-            save_to_file(alphabet, title, extracted_text)
+            if html:
+                title, extracted_text = extract_text(html)
+                save_to_file(alphabet, title, extracted_text)
 
-# ========================== LOADING & CHUNKING TEXT ==========================
+def combine_articles():
+    """Combines all text from scraped articles into one large text file."""
+    combined_text = ""
 
-def load_articles():
-    articles = []
     for alpha in os.listdir("articles"):
         folder_path = os.path.join("articles", alpha)
         if os.path.isdir(folder_path):
-            for file_name in os.listdir(folder_path):
-                if file_name.endswith(".txt"):
-                    file_path = os.path.join(folder_path, file_name)
-                    with open(file_path, "r", encoding="utf-8") as file:
-                        content = file.read()
-                    
-                    lines = content.strip().split("\n")
-                    article_data = {}
-                    current_section = None
-                    
-                    for line in lines:
-                        if line and not line.startswith(" ") and line == line.strip():
-                            current_section = line
-                            article_data[current_section] = ""
-                        elif current_section:
-                            article_data[current_section] += line + " "
-                    
-                    article_data["_file_path"] = file_path
-                    article_data["_alphabet"] = alpha
-                    articles.append(article_data)
-    
-    return articles
+            for file_name in sorted(os.listdir(folder_path)):  # Ensure alphabetical order
+                file_path = os.path.join(folder_path, file_name)
+                with open(file_path, "r", encoding="utf-8") as file:
+                    combined_text += file.read() + "\n\n"
 
-def combine_text(articles):
-    """Combines all text into one large document."""
-    combined_text = ""
-    for article in articles:
-        combined_text += article.get("Title", "") + "\n"
-        for section, content in article.items():
-            if not section.startswith("_"):
-                combined_text += f"{section}: {content}\n"
     return combined_text
 
-def chunk_text(text, max_tokens=500):
+def chunk_text(text, max_tokens=200):
+    """Splits text into chunks based on max token limit."""
     words = text.split()
-    chunks = [" ".join(words[i:i + max_tokens]) for i in range(0, len(words), max_tokens)]
-    return chunks
+    return [" ".join(words[i:i + max_tokens]) for i in range(0, len(words), max_tokens)]
 
-# ========================== GENERATING & STORING EMBEDDINGS ==========================
-
-def create_embeddings(text):
-    model = SentenceTransformer(MODEL_NAME)
+def create_embeddings(text, model_name="all-MiniLM-L6-v2"):
+    """Generates embeddings for the combined text chunks."""
+    model = SentenceTransformer(model_name)
     chunks = chunk_text(text)
-    
-    metadata = [{"chunk_id": i} for i in range(len(chunks))]
+
+    print(f"Total chunks: {len(chunks)}")
+
     embeddings = model.encode(chunks, show_progress_bar=True)
+    return embeddings, chunks
 
-    return np.array(embeddings).astype('float32'), metadata
-
-def store_in_vector_db(embeddings, metadata):
+def store_in_vector_db(embeddings, chunks, index_path="medical_index.faiss", metadata_path="metadata.pickle"):
+    """Stores embeddings and corresponding text in FAISS."""
+    embeddings = np.array(embeddings).astype('float32')
     dimension = embeddings.shape[1]
+
     index = faiss.IndexFlatL2(dimension)
     index.add(embeddings)
 
-    faiss.write_index(index, INDEX_PATH)
+    faiss.write_index(index, index_path)
 
-    with open(METADATA_PATH, 'wb') as f:
-        pickle.dump(metadata, f)
+    with open(metadata_path, 'wb') as f:
+        pickle.dump(chunks, f)
 
     print("Embeddings stored successfully!")
 
-def generate_and_store_embeddings():
-    print("Loading articles...")
-    articles = load_articles()
+def input_alphabet():
+    """Prompts the user to input an alphabet for scraping."""
+    alphabet = input("Enter the alphabet to scrape (e.g., A, B, C): ").strip().upper()
+    return alphabet
 
-    if not articles:
-        print("No articles found. Please scrape some data first.")
-        return
-    
-    print(f"Found {len(articles)} articles. Combining text...")
-    combined_text = combine_text(articles)
+def medical_query_input(query, index_path="medical_index.faiss", metadata_path="metadata.pickle"):
+    """Processes a medical query and retrieves relevant articles."""
+    # Load the FAISS index and metadata
+    index = faiss.read_index(index_path)
+    with open(metadata_path, 'rb') as f:
+        chunks = pickle.load(f)
 
-    print("Generating embeddings...")
-    embeddings, metadata = create_embeddings(combined_text)
+    # Create embeddings for the query
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    query_embedding = model.encode([query])
 
-    print("Storing in FAISS...")
-    store_in_vector_db(embeddings, metadata)
+    # Search for the nearest neighbors
+    D, I = index.search(np.array(query_embedding).astype('float32'), k=5)  # Get top 5 results
 
-# ========================== SEARCH FUNCTION ==========================
-
-def load_faiss_index():
-    index = faiss.read_index(INDEX_PATH)
-    with open(METADATA_PATH, 'rb') as f:
-        metadata = pickle.load(f)
-    return index, metadata
-
-def search_medical_query(query, top_k=3):
-    model = SentenceTransformer(MODEL_NAME)
-    query_embedding = model.encode([query]).astype('float32')
-
-    index, metadata = load_faiss_index()
-    _, indices = index.search(query_embedding, top_k)
-
-    results = [metadata[idx] for idx in indices[0] if idx < len(metadata)]
-    return results
-
-# ========================== MAIN EXECUTION ==========================
+    # Display the results
+    print("\nTop relevant articles for your query:")
+    for i in range(len(I[0])):
+        if I[0][i] != -1:  # Check if the index is valid
+            print(f"{i + 1}. {chunks[I[0][i]]} (Distance: {D[0][i]})")
 
 if __name__ == "__main__":
-    print("Medical Text Processing Tool")
-    print("1. Scrape articles for alphabets")
-    print("2. Create embeddings for all articles")
-    print("3. Search for a medical topic")
+    # Get user input for alphabet
+    alphabet_to_scrape = input_alphabet()
+    scrape_alphabets([alphabet_to_scrape])
 
-    choice = input("Enter your choice (1-3): ")
+    print("\nCombining articles...")
+    combined_text = combine_articles()
 
-    if choice == "1":
-        alphabets = input("Enter alphabets (e.g., X,Y,Z): ").strip().upper().split(",")
-        for alphabet in alphabets:
-            process_alphabet(alphabet)
+    print("\nGenerating embeddings...")
+    embeddings, chunks = create_embeddings(combined_text)
 
-    elif choice == "2":
-        generate_and_store_embeddings()
+    print("\nStoring in FAISS...")
+    store_in_vector_db(embeddings, chunks)
 
-    elif choice == "3":
-        if not os.path.exists(INDEX_PATH) or not os.path.exists(METADATA_PATH):
-            print("Vector database not found. Please create embeddings first (option 2).")
-        else:
-            query = input("Enter your medical query: ")
-            results = search_medical_query(query)
-
-            print("\nTop results:")
-            for i, result in enumerate(results, 1):
-                print(f"\nResult {i}: {result}")
+    # Get user input for medical query
+    medical_query = input("Enter a medical query to search for relevant articles: ")
+    medical_query_input(medical_query)
