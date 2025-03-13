@@ -1,2 +1,23 @@
-venv
-articles
+# Ignore virtual environment
+venv/
+.env
+
+# Ignore data files
+data/
+embeddings/
+*.faiss
+*.pickle
+*.pkl
+*.jsonl  # In case you store processed data as JSON lines
+
+# Ignore logs and cache
+logs/
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+
+# Ignore temporary files
+.DS_Store
+Thumbs.db
