@@ -21,20 +21,48 @@ def initialize_llama_model():
     return llama_pipeline
 
 def generate_llama_response(query, context, llama_pipeline):
-    """Generates an answer using LLaMA 3.1 8B Instruct."""
+    """Generates a detailed, patient-friendly answer using LLaMA 3.1 8B Instruct."""
+    # Enhanced system prompt
+    system_prompt = (
+        "You are a knowledgeable and empathetic medical assistant. "
+        "Your task is to provide clear, accurate, and detailed answers to the user's questions "
+        "using ONLY the provided context. If the context does not contain enough information, "
+        "politely state that you cannot provide a definitive answer. "
+        "Always explain medical terms in simple language and provide practical advice where applicable."
+    )
+
+    # Format the query and context for better clarity
+    user_prompt = (
+        f"Context: {context}\n\n"
+        f"Question: {query}\n\n"
+        "Instructions: Provide a detailed, step-by-step answer. "
+        "Explain any medical terms in simple language. "
+        "If the context does not provide enough information, say so."
+    )
+
     messages = [
-        {"role": "system", "content": "You are a medical assistant. Answer the user's question using ONLY the provided context. If unsure, say so."},
-        {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
     ]
 
+    # Generate the response
     outputs = llama_pipeline(
         messages,
-        max_new_tokens=512,  # Adjust based on your needs
-        temperature=0.7,      # Control randomness
-        top_p=0.9,            # Nucleus sampling
+        max_new_tokens=512,  # Increase for more detailed answers
+        temperature=0.5,     # Lower for more factual, less creative responses
+        top_p=0.9,           # Controls diversity of responses
+        do_sample=True,      # Enables sampling for better quality
     )
-    return outputs[0]["generated_text"][-1]["content"]
 
+    # Extract and post-process the response
+    raw_answer = outputs[0]["generated_text"][-1]["content"]
+
+    # Post-processing for clarity
+    refined_answer = raw_answer.strip()  # Remove leading/trailing whitespace
+    if not refined_answer.endswith((".", "!", "?")):
+        refined_answer += "."  # Ensure the answer ends with proper punctuation
+
+    return refined_answer
 # --- Core Functions ---
 def fetch_page(url):
     response = requests.get(url)
