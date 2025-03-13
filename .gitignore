@@ -21,3 +21,4 @@ __pycache__/
 # Ignore temporary files
 .DS_Store
 Thumbs.db
+articles

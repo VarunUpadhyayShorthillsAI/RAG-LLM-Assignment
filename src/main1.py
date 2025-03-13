@@ -5,9 +5,37 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import faiss
 import pickle
+import torch
+from transformers import pipeline
 
-BASE_URL = "https://medlineplus.gov/ency/"
+# --- LLaMA 3.1 Integration ---
+def initialize_llama_model():
+    """Initializes the LLaMA 3.1 8B Instruct model using transformers."""
+    model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    llama_pipeline = pipeline(
+        "text-generation",
+        model=model_id,
+        model_kwargs={"torch_dtype": torch.bfloat16},
+        device_map="auto",
+    )
+    return llama_pipeline
 
+def generate_llama_response(query, context, llama_pipeline):
+    """Generates an answer using LLaMA 3.1 8B Instruct."""
+    messages = [
+        {"role": "system", "content": "You are a medical assistant. Answer the user's question using ONLY the provided context. If unsure, say so."},
+        {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"},
+    ]
+
+    outputs = llama_pipeline(
+        messages,
+        max_new_tokens=512,  # Adjust based on your needs
+        temperature=0.7,      # Control randomness
+        top_p=0.9,            # Nucleus sampling
+    )
+    return outputs[0]["generated_text"][-1]["content"]
+
+# --- Core Functions ---
 def fetch_page(url):
     response = requests.get(url)
     return response.text if response.status_code == 200 else None
@@ -141,12 +169,19 @@ def medical_query_input(query, index_path="medical_index.faiss", metadata_path="
     # Search for the nearest neighbors
     D, I = index.search(np.array(query_embedding).astype('float32'), k=5)  # Get top 5 results
 
-    # Display the results
-    print("\nTop relevant articles for your query:")
-    for i in range(len(I[0])):
-        if I[0][i] != -1:  # Check if the index is valid
-            print(f"{i + 1}. {chunks[I[0][i]]} (Distance: {D[0][i]})")
+    # Combine top chunks into context
+    context = "\n\n".join([chunks[i] for i in I[0] if i != -1])
 
+    # Generate answer using LLaMA 3.1
+    llama_pipeline = initialize_llama_model()
+    answer = generate_llama_response(query, context, llama_pipeline)
+    
+    print("\n=== Generated Answer ===")
+    print(answer)
+    print("\n=== Supporting Context ===")
+    print(context[:1000] + "...")  # Show first 1000 chars of context
+
+# --- Menu Functions ---
 def scrape_option():
     """Function to handle scraping option."""
     alphabet_to_scrape = input_alphabet()
@@ -192,9 +227,10 @@ def query_option():
         print("Error: Embeddings not found! Please create embeddings first.")
         return
         
-    medical_query = input("Enter a medical query to search for relevant articles: ")
+    medical_query = input("\nEnter your medical question: ")
     medical_query_input(medical_query)
 
+# --- Main Program ---
 if __name__ == "__main__":
     while True:
         print("\n--- Medical Information System ---")

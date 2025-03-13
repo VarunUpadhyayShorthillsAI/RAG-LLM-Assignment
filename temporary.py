@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from sentence_transformers import SentenceTransformer
 
 # Set API Key for Llama-2 (Hugging Face)
-HF_API_KEY = "your_huggingface_api_key"  # Replace with actual API key
+HF_API_KEY = "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"  # Replace with actual API key
 LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
