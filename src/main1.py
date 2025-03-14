@@ -5,37 +5,35 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 import faiss
 import pickle
-import torch
-from transformers import pipeline
+from langchain_mistralai import ChatMistralAI
+import getpass
+
+# Set Mistral API key
+os.environ["MISTRAL_API_KEY"] = getpass.getpass("Enter your Mistral API key: ")
 
 BASE_URL = "https://medlineplus.gov/ency/"
 
-# --- LLaMA 3.1 Integration ---
-def initialize_llama_model():
-    """Initializes the LLaMA 3.1 8B Instruct model using transformers."""
-    model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-    llama_pipeline = pipeline(
-        "text-generation",
-        model=model_id,
-        model_kwargs={"torch_dtype": torch.bfloat16},
-        device_map="auto",
+# --- Mistral Integration ---
+def initialize_mistral_model():
+    """Initializes the Mistral model using LangChain."""
+    llm = ChatMistralAI(
+        model="mistral-large-latest",
+        temperature=0.2,  # Lower temperature for more factual responses
+        max_retries=2,     # Retry on API failures
     )
-    return llama_pipeline
+    return llm
 
-def generate_llama_response(query, context, llama_pipeline):
-    """Generates an answer using LLaMA 3.1 8B Instruct."""
-    messages = [
-        {"role": "system", "content": "You are a medical assistant. Answer the user's question using ONLY the provided context. If unsure, say so."},
-        {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"},
-    ]
-
-    outputs = llama_pipeline(
-        messages,
-        max_new_tokens=512,  # Adjust based on your needs
-        temperature=0.7,      # Control randomness
-        top_p=0.9,            # Nucleus sampling
+def generate_mistral_response(query, context, mistral_llm):
+    """Generates an answer using Mistral."""
+    prompt = (
+        "You are a medical assistant. Answer the user's question using ONLY the provided context. "
+        "If unsure, say so. Always explain medical terms in simple language.\n\n"
+        f"Context: {context}\n\n"
+        f"Question: {query}"
     )
-    return outputs[0]["generated_text"][-1]["content"]
+
+    response = mistral_llm.invoke(prompt)
+    return response.content
 
 # --- Core Functions ---
 def fetch_page(url):
@@ -174,14 +172,16 @@ def medical_query_input(query, index_path="medical_index.faiss", metadata_path="
     # Combine top chunks into context
     context = "\n\n".join([chunks[i] for i in I[0] if i != -1])
 
-    # Generate answer using LLaMA 3.1
-    llama_pipeline = initialize_llama_model()
-    answer = generate_llama_response(query, context, llama_pipeline)
+    # Generate answer using Mistral
+    mistral_llm = initialize_mistral_model()
+    answer = generate_mistral_response(query, context, mistral_llm)
     
-    print("\n=== Generated Answer ===")
-    print(answer)
-    print("\n=== Supporting Context ===")
-    print(context[:1000] + "...")  # Show first 1000 chars of context
+    # Return the response as a string
+    response = (
+        f"=== Generated Answer ===\n{answer}\n\n"
+        f"=== Supporting Context ===\n{context[:1000]}..."
+    )
+    return response
 
 # --- Menu Functions ---
 def scrape_option():
