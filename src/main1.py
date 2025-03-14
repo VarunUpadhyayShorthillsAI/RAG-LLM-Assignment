@@ -8,6 +8,8 @@ import pickle
 import torch
 from transformers import pipeline
 
+BASE_URL = "https://medlineplus.gov/ency/"
+
 # --- LLaMA 3.1 Integration ---
 def initialize_llama_model():
     """Initializes the LLaMA 3.1 8B Instruct model using transformers."""
@@ -20,45 +22,21 @@ def initialize_llama_model():
     )
     return llama_pipeline
 
-
 def generate_llama_response(query, context, llama_pipeline):
-    """Enhanced generation with context validation"""
-    system_prompt = """You're a medical AI assistant. Follow these rules:
-1. Answer ONLY using the provided context
-2. If context is insufficient, state "I cannot provide a definitive answer"
-3. Highlight uncertainties
-4. Use markdown formatting for clarity
-5. Cite context numbers like [1], [2] etc."""
-
-    user_prompt = f"""**Context:**\n{context}\n\n**Question:** {query}"""
-
+    """Generates an answer using LLaMA 3.1 8B Instruct."""
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
+        {"role": "system", "content": "You are a medical assistant. Answer the user's question using ONLY the provided context. If unsure, say so."},
+        {"role": "user", "content": f"Context: {context}\n\nQuestion: {query}"},
     ]
 
     outputs = llama_pipeline(
         messages,
-        max_new_tokens=512,
-        temperature=0.3,  # Lower for medical accuracy
-        top_p=0.85,
-        repetition_penalty=1.2,
-        do_sample=True,
+        max_new_tokens=512,  # Adjust based on your needs
+        temperature=0.7,      # Control randomness
+        top_p=0.9,            # Nucleus sampling
     )
+    return outputs[0]["generated_text"][-1]["content"]
 
-    return postprocess_answer(outputs[0]["generated_text"][-1]["content"])
-
-def postprocess_answer(text):
-    """Clean and validate responses"""
-    # Remove any markdown formatting
-    text = re.sub(r'\*+', '', text)
-    
-    # Ensure citations reference valid context numbers
-    text = re.sub(r'\[(\d+)\]', lambda m: f"[Source {m.group(1)}]" 
-                  if m.group(1).isdigit() else m.group(0), text)
-    
-    # Truncate if too long
-    return text[:2000] + "..." if len(text) > 2000 else text
 # --- Core Functions ---
 def fetch_page(url):
     response = requests.get(url)
@@ -149,7 +127,6 @@ def chunk_text(text, max_tokens=200):
     words = text.split()
     return [" ".join(words[i:i + max_tokens]) for i in range(0, len(words), max_tokens)]
 
-
 def create_embeddings(text, model_name="all-MiniLM-L6-v2"):
     """Generates embeddings for the combined text chunks."""
     model = SentenceTransformer(model_name)
@@ -180,39 +157,32 @@ def input_alphabet():
     alphabet = input("Enter the alphabet to scrape (e.g., A, B, C) or 'ALL' for all alphabets: ").strip().upper()
     return alphabet
 
-def medical_query_input(query, index_path="medical_index.faiss", top_k=5):
-    """Improved retrieval with score thresholding"""
+def medical_query_input(query, index_path="medical_index.faiss", metadata_path="metadata.pickle"):
+    """Processes a medical query and retrieves relevant articles."""
+    # Load the FAISS index and metadata
     index = faiss.read_index(index_path)
-    with open("metadata.pickle", 'rb') as f:
-        metadata = pickle.load(f)
-    
+    with open(metadata_path, 'rb') as f:
+        chunks = pickle.load(f)
+
+    # Create embeddings for the query
     model = SentenceTransformer("all-MiniLM-L6-v2")
     query_embedding = model.encode([query])
-    
-    # Get scores and indices
-    scores, indices = index.search(query_embedding, top_k*2)  # Get extra for filtering
-    
-    # Apply score threshold (0.5 is arbitrary - adjust based on your data)
-    valid_indices = [i for i, score in zip(indices[0], scores[0]) if score < 0.5]
-    
-    # Combine best chunks with context preservation
-    context_chunks = [metadata["chunks"][i] for i in valid_indices[:top_k]]
-    context = "\n\n".join([
-        f"Context {i+1}: {chunk}" 
-        for i, chunk in enumerate(context_chunks)
-    ])
-    
-    # Generate answer
+
+    # Search for the nearest neighbors
+    D, I = index.search(np.array(query_embedding).astype('float32'), k=5)  # Get top 5 results
+
+    # Combine top chunks into context
+    context = "\n\n".join([chunks[i] for i in I[0] if i != -1])
+
+    # Generate answer using LLaMA 3.1
     llama_pipeline = initialize_llama_model()
     answer = generate_llama_response(query, context, llama_pipeline)
     
-    # Display results with scores
     print("\n=== Generated Answer ===")
     print(answer)
     print("\n=== Supporting Context ===")
-    for i, chunk in enumerate(context_chunks):
-        print(f"\n[Relevance Score: {scores[0][i]:.2f}]\n{chunk[:200]}...")
-        
+    print(context[:1000] + "...")  # Show first 1000 chars of context
+
 # --- Menu Functions ---
 def scrape_option():
     """Function to handle scraping option."""
