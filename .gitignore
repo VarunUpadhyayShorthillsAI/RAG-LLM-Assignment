@@ -22,3 +22,5 @@ __pycache__/
 .DS_Store
 Thumbs.db
 articles
+qa_pairs.csv
+qa_pairs_s_to_z.csv
