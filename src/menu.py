@@ -2,8 +2,7 @@ from scraper import scrape_alphabets
 from embedder import combine_articles, create_embeddings, store_in_vector_db
 from query_handler import medical_query_input
 from utils import input_alphabet
-import os
-# --- Menu Functions ---
+
 def scrape_option():
     """Function to handle scraping option."""
     alphabet_to_scrape = input_alphabet()
@@ -51,26 +50,3 @@ def query_option():
         
     medical_query = input("\nEnter your medical question: ")
     medical_query_input(medical_query)
-
-# --- Main Program ---
-if __name__ == "__main__":
-    while True:
-        print("\n--- Medical Information System ---")
-        print("1. Scrape data")
-        print("2. Create embeddings from all scraped data")
-        print("3. Make a medical query")
-        print("4. Exit")
-        
-        choice = input("\nEnter your choice (1-4): ")
-        
-        if choice == "1":
-            scrape_option()
-        elif choice == "2":
-            embedding_option()
-        elif choice == "3":
-            query_option()
-        elif choice == "4":
-            print("Exiting program. Goodbye!")
-            break
-        else:
-            print("Invalid choice. Please enter a number between 1 and 4.")
