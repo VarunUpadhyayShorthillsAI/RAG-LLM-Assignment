@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 from rouge_score import rouge_scorer
-from evaluate import load  # For exact match
+from evaluate import load  
 from tqdm import tqdm
 from dotenv import load_dotenv
 from transformers import BertTokenizer, BertModel
@@ -43,7 +43,7 @@ bert_model = BertModel.from_pretrained('bert-base-uncased')
 def setup_logger():
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, "w") as f:
-            f.write("timestamp,context,question,generated_answer,reference_answer,exact_match,cosine_similarity,rouge_score,bert_similarity,precision,accuracy,final_score\n")
+            f.write("timestamp,context,question,generated_answer,reference_answer,cosine_similarity,rouge_score,bert_similarity,precision,accuracy,final_score\n")
 
 def log_interaction(context, question, generated, reference, metrics):
     timestamp = datetime.now().isoformat()
@@ -69,7 +69,7 @@ def calculate_bert_similarity(text1, text2):
 def calculate_metrics(generated, reference):
     if not generated or not reference:
         return {
-            "exact_match": np.nan,
+            
             "cosine_similarity": np.nan,
             "rouge_score": np.nan,
             "bert_similarity": np.nan,
@@ -78,15 +78,13 @@ def calculate_metrics(generated, reference):
             "final_score": np.nan
         }
 
-    # Exact Match
-    exact_match = exact_match_metric.compute(predictions=[generated], references=[reference])["exact_match"]
 
     # Cosine Similarity
     emb_gen = similarity_model.encode(generated)
     emb_ref = similarity_model.encode(reference)
     if np.any(np.isnan(emb_gen)) or np.any(np.isnan(emb_ref)):
         return {
-            "exact_match": np.nan,
+           
             "cosine_similarity": np.nan,
             "rouge_score": np.nan,
             "bert_similarity": np.nan,
@@ -118,14 +116,14 @@ def calculate_metrics(generated, reference):
 
     # Final Score (weighted average)
     final_score = (
-        exact_match * 0.3 +
+        
         cosine_sim * 0.3 +
         rouge_score * 0.2 +
         bert_sim * 0.2
     )
 
     return {
-        "exact_match": exact_match,
+        
         "cosine_similarity": float(cosine_sim),
         "rouge_score": rouge_score,
         "bert_similarity": bert_sim,
@@ -173,7 +171,7 @@ def qa_pipeline(question, context=""):
             print(f"❌ Error: {response.status_code} - {response.text}")
             return "Error generating response"
 
-    print("🚨 Max retries reached. Skipping question.")
+    print(" Max retries reached. Skipping question.")
     return "Error generating response"
 def process_test_cases():
     setup_logger()
@@ -186,7 +184,7 @@ def process_test_cases():
     if not os.path.exists(RESULTS_FILE):
         pd.DataFrame(columns=[
             "question", "context", "generated_answer", "reference_answer",
-            "exact_match", "cosine_similarity", "rouge_score", "bert_similarity", "precision", "accuracy", "final_score"
+            , "cosine_similarity", "rouge_score", "bert_similarity", "precision", "accuracy", "final_score"
         ]).to_csv(RESULTS_FILE, index=False)
 
     # Remove or comment out this line to process all rows
@@ -223,7 +221,7 @@ def process_test_cases():
 
         except Exception as e:
             error_msg = f"Error processing case {idx}: {str(e)}"
-            print(f"❌ {error_msg}")
+            print(f" {error_msg}")
             with open(LOG_FILE, "a") as f:
                 f.write(json.dumps({
                     "timestamp": datetime.now().isoformat(),
@@ -233,7 +231,7 @@ def process_test_cases():
                 }) + "\n")
 
     pbar.close()
-    print(f"\n✅ Processing complete! Results saved to {RESULTS_FILE}. Logs in {LOG_FILE}.")
+    print(f"\nProcessing complete! Results saved to {RESULTS_FILE}. Logs in {LOG_FILE}.")
 
     
 if __name__ == "__main__":
@@ -243,5 +241,5 @@ if __name__ == "__main__":
     print("\nFinal Metrics Summary:")
     print(final_df.describe())
 
-    print("\n🔍 Debug: Checking NaN values in final dataframe")
+    
     print(final_df.isna().sum())
