@@ -24,3 +24,7 @@ Thumbs.db
 articles
 qa_pairs.csv
 qa_pairs_s_to_z.csv
+metadata.pickle
+medical_index.faiss
+qa_interactions.log
+=0.26.0
