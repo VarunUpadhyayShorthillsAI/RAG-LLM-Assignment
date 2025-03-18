@@ -3,6 +3,8 @@ import os
 from src.query_handler import medical_query_input
 import torch
 from dotenv import load_dotenv
+from datetime import datetime
+import csv
 
 # Load environment variables
 load_dotenv()
@@ -19,7 +21,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        body { background-color: #e3f2fd; }
+        body {  }
         .stTextInput>div>div>input {
             border-radius: 10px;
             padding: 12px;
@@ -34,7 +36,7 @@ st.markdown(
             font-size: 16px;
         }
         .stButton>button:hover {
-            background-color: #388e3c;
+          
         }
         .stMarkdown h1 {
             font-size: 30px;
@@ -43,7 +45,7 @@ st.markdown(
             color: #1e88e5;
         }
         .stMarkdown h3 {
-            color: #388e3c;
+            # color: #388e3c;
         }
     </style>
     """,
@@ -63,6 +65,25 @@ if api_key:
     os.environ["MISTRAL_API_KEY"] = api_key
     st.session_state.api_key_saved = True
 
+# Function to log Q&A interactions
+def log_qa_interaction(question, answer, log_file="qa_logs.csv"):
+    """
+    Logs a Q&A interaction to a CSV file.
+    """
+    # Create the log entry
+    log_entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "question": question,
+        "answer": answer
+    }
+
+    # Write the log entry to the CSV file
+    with open(log_file, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=log_entry.keys())
+        if file.tell() == 0:  # Write header if file is empty
+            writer.writeheader()
+        writer.writerow(log_entry)
+
 # User input box
 query = st.text_input("Enter your medical question:", placeholder="e.g., What are the symptoms of pneumonia?")
 
@@ -77,6 +98,9 @@ if st.button("Get Answer"):
                     # Display the answer
                     st.markdown("### Response")
                     st.write(answer)
+
+                    # Log the Q&A interaction
+                    log_qa_interaction(question=query, answer=answer)
 
                     # Show context if available
                     if context:

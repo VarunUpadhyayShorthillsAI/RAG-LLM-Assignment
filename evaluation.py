@@ -12,7 +12,6 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 from transformers import BertTokenizer, BertModel
 import torch
-from sklearn.metrics import precision_score, accuracy_score
 
 # Load environment variables
 load_dotenv()
@@ -21,7 +20,7 @@ load_dotenv()
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 LOG_FILE = "qa_interactions.log"
-RESULTS_FILE = "evaluation_results_100.csv"
+RESULTS_FILE = "final_evaluation_new.csv"
 TEST_CASES_FILE = "cleaned_file_with_context.csv"
 
 VALID_MODELS = ["mistral-7b", "mistral-tiny", "gpt-4"]
@@ -33,7 +32,6 @@ if MISTRAL_MODEL not in VALID_MODELS:
 # Initialize models
 similarity_model = SentenceTransformer("all-MiniLM-L6-v2")
 rouge = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
-exact_match_metric = load("exact_match")
 
 # Initialize BERT model and tokenizer
 bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -43,7 +41,7 @@ bert_model = BertModel.from_pretrained('bert-base-uncased')
 def setup_logger():
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, "w") as f:
-            f.write("timestamp,context,question,generated_answer,reference_answer,cosine_similarity,rouge_score,bert_similarity,precision,accuracy,final_score\n")
+            f.write("timestamp,context,question,generated_answer,reference_answer,cosine_similarity,rouge_score,bert_similarity,precision,final_score\n")
 
 def log_interaction(context, question, generated, reference, metrics):
     timestamp = datetime.now().isoformat()
@@ -69,27 +67,22 @@ def calculate_bert_similarity(text1, text2):
 def calculate_metrics(generated, reference):
     if not generated or not reference:
         return {
-            
             "cosine_similarity": np.nan,
             "rouge_score": np.nan,
             "bert_similarity": np.nan,
             "precision": np.nan,
-            "accuracy": np.nan,
             "final_score": np.nan
         }
-
 
     # Cosine Similarity
     emb_gen = similarity_model.encode(generated)
     emb_ref = similarity_model.encode(reference)
     if np.any(np.isnan(emb_gen)) or np.any(np.isnan(emb_ref)):
         return {
-           
             "cosine_similarity": np.nan,
             "rouge_score": np.nan,
             "bert_similarity": np.nan,
             "precision": np.nan,
-            "accuracy": np.nan,
             "final_score": np.nan
         }
     cosine_sim = np.dot(emb_gen, emb_ref) / (np.linalg.norm(emb_gen) * np.linalg.norm(emb_ref))
@@ -100,41 +93,31 @@ def calculate_metrics(generated, reference):
     # BERT Similarity
     bert_sim = calculate_bert_similarity(generated, reference)
 
-    # Precision and Accuracy
+    # Precision
     gen_tokens = set(generated.split())
     ref_tokens = set(reference.split())
-
-    # Precision: True Positives / (True Positives + False Positives)
     true_positives = len(gen_tokens.intersection(ref_tokens))
     false_positives = len(gen_tokens - ref_tokens)
     precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
 
-    # Accuracy: (True Positives + True Negatives) / Total Tokens
-    total_tokens = len(gen_tokens.union(ref_tokens))
-    true_negatives = total_tokens - len(gen_tokens.union(ref_tokens))
-    accuracy = (true_positives + true_negatives) / total_tokens if total_tokens > 0 else 0
-
     # Final Score (weighted average)
     final_score = (
-        
-        cosine_sim * 0.3 +
-        rouge_score * 0.2 +
-        bert_sim * 0.2
+        cosine_sim * 0.4 +
+        rouge_score * 0.3 +
+        bert_sim * 0.3
     )
 
     return {
-        
         "cosine_similarity": float(cosine_sim),
         "rouge_score": rouge_score,
         "bert_similarity": bert_sim,
         "precision": precision,
-        "accuracy": accuracy,
         "final_score": final_score
     }
 
 def load_test_cases(filepath):
     df = pd.read_csv(filepath)
-    print(f"✅ Loaded {len(df)} test cases.")
+    print(f" Loaded {len(df)} test cases.")
     return df
 
 def qa_pipeline(question, context=""):
@@ -168,11 +151,12 @@ def qa_pipeline(question, context=""):
             time.sleep(wait_time)
 
         else:
-            print(f"❌ Error: {response.status_code} - {response.text}")
+            print(f" Error: {response.status_code} - {response.text}")
             return "Error generating response"
 
-    print(" Max retries reached. Skipping question.")
+    print("Max retries reached. Skipping question.")
     return "Error generating response"
+
 def process_test_cases():
     setup_logger()
     df = load_test_cases(TEST_CASES_FILE)
@@ -184,11 +168,8 @@ def process_test_cases():
     if not os.path.exists(RESULTS_FILE):
         pd.DataFrame(columns=[
             "question", "context", "generated_answer", "reference_answer",
-            , "cosine_similarity", "rouge_score", "bert_similarity", "precision", "accuracy", "final_score"
+            "cosine_similarity", "rouge_score", "bert_similarity", "precision", "final_score"
         ]).to_csv(RESULTS_FILE, index=False)
-
-    # Remove or comment out this line to process all rows
-    # df = df.head(10)
 
     pbar = tqdm(total=len(df), desc="Processing test cases")
 
@@ -221,7 +202,7 @@ def process_test_cases():
 
         except Exception as e:
             error_msg = f"Error processing case {idx}: {str(e)}"
-            print(f" {error_msg}")
+            print(f"{error_msg}")
             with open(LOG_FILE, "a") as f:
                 f.write(json.dumps({
                     "timestamp": datetime.now().isoformat(),
@@ -233,7 +214,6 @@ def process_test_cases():
     pbar.close()
     print(f"\nProcessing complete! Results saved to {RESULTS_FILE}. Logs in {LOG_FILE}.")
 
-    
 if __name__ == "__main__":
     process_test_cases()
 
@@ -241,5 +221,4 @@ if __name__ == "__main__":
     print("\nFinal Metrics Summary:")
     print(final_df.describe())
 
-    
     print(final_df.isna().sum())
