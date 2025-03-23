@@ -4,6 +4,14 @@
 This project is a Medical Information System that scrapes, processes, and makes searchable a comprehensive medical encyclopedia from MedlinePlus. Users can query medical information through an AI-powered interface.
 
 
+## Working Demo of the Project
+<video controls>
+  <source src="RAG_LLM_Assignment_Working_Demo.webm" type="webm">
+  Your browser does not support the video tag.
+</video>
+
+
+
 ## Installation & Setup
 
 ### Clone the Repository

@@ -21,28 +21,60 @@ def combine_articles(data_dir="articles"):
 
     return combined_text
 
-def chunk_text(text, max_tokens=200):
-    """Splits text into chunks based on max token limit."""
-    # Simple word-based chunking approach
+def chunk_text(text, max_tokens=1000, overlap=200):
+    """
+    Splits text into chunks based on max token limit with specified overlap.
+    
+    Args:
+        text: The text to chunk
+        max_tokens: Maximum number of tokens (words) per chunk
+        overlap: Number of tokens to overlap between chunks
+    
+    Returns:
+        List of text chunks with overlap
+    """
     words = text.split()
-    return [" ".join(words[i:i + max_tokens]) for i in range(0, len(words), max_tokens)]
+    chunks = []
+    
+    # Handle empty text case
+    if not words:
+        return chunks
+    
+    # Calculate stride (step size between chunks)
+    stride = max_tokens - overlap
+    
+    # Ensure stride is at least 1 to prevent infinite loop
+    stride = max(1, stride)
+    
+    # Create overlapping chunks
+    for i in range(0, len(words), stride):
+        # Take max_tokens words or whatever is left
+        chunk = words[i:i + max_tokens]
+        if chunk:  # Only add non-empty chunks
+            chunks.append(" ".join(chunk))
+    
+    return chunks
 
 def create_embeddings(text, model_name="all-MiniLM-L6-v2"):
-    """Generates embeddings for the combined text chunks."""
+    """Generates embeddings for the combined text chunks with metadata."""
     # Load sentence transformer model
     model = SentenceTransformer(model_name)
     
-    # Split text into manageable chunks
-    chunks = chunk_text(text)
-
+    # Split text into manageable chunks with overlap
+    chunks = chunk_text(text, max_tokens=200, overlap=50)
+    
     print(f"Total chunks: {len(chunks)}")
-
+    
     # Generate vector embeddings for each chunk
     embeddings = model.encode(chunks, show_progress_bar=True)
-    return embeddings, chunks
+    
+    # Create metadata with chunk index and content
+    metadata = [{"index": i, "content": chunk} for i, chunk in enumerate(chunks)]
+    
+    return embeddings, metadata
 
-def store_in_vector_db(embeddings, chunks, index_path="medical_index.faiss", metadata_path="metadata.pickle"):
-    """Stores embeddings and corresponding text in FAISS."""
+def store_in_vector_db(embeddings, metadata, index_path="medical_index.faiss", metadata_path="metadata.pickle"):
+    """Stores embeddings and corresponding metadata in FAISS."""
     # Convert to numpy array with correct data type
     embeddings = np.array(embeddings).astype('float32')
     dimension = embeddings.shape[1]
@@ -54,8 +86,8 @@ def store_in_vector_db(embeddings, chunks, index_path="medical_index.faiss", met
     # Save index to disk
     faiss.write_index(index, index_path)
 
-    # Save text chunks as metadata
+    # Save metadata
     with open(metadata_path, 'wb') as f:
-        pickle.dump(chunks, f)
+        pickle.dump(metadata, f)
 
     print("Embeddings stored successfully!")
