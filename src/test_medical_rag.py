@@ -7,24 +7,9 @@ import sys
 import time
 from bs4 import BeautifulSoup
 
-# Add colors for better visualization
-GREEN = '\033[92m'
-RED = '\033[91m'
-YELLOW = '\033[93m'
-BLUE = '\033[94m'
-ENDC = '\033[0m'
-
 def print_step(message):
-    """Helper function to print test steps with nice formatting"""
-    print(f"{BLUE}>>> {message}{ENDC}")
-
-def print_success(message):
-    """Helper function to print success messages"""
-    print(f"{GREEN}✓ {message}{ENDC}")
-
-def print_failure(message):
-    """Helper function to print failure messages"""
-    print(f"{RED}✗ {message}{ENDC}")
+    """Helper function to print test steps with simple formatting"""
+    print(f">>> {message}")
 
 # Import the functions to test
 # NOTE: Adjust the import statement to match your actual module name
@@ -40,13 +25,120 @@ try:
         scrape_alphabets
     )
 except ImportError:
-    print(f"{RED}Error: Could not import from main. Make sure the module exists and is in the Python path.{ENDC}")
+    print(f"Error: Could not import from main. Make sure the module exists and is in the Python path.")
     sys.exit(1)
 
-class TestWebScrapingFunctions(unittest.TestCase):
+class TestResult:
+    """Class to track test results"""
+    def __init__(self):
+        self.passed = []
+        self.failed = []
+        
+    def add_pass(self, test_name):
+        self.passed.append(test_name)
+        
+    def add_fail(self, test_name, error_message):
+        self.failed.append((test_name, error_message))
+        
+    def print_summary(self):
+        print("\n======================================")
+        print("= TEST RESULTS SUMMARY               =")
+        print("======================================")
+        
+        print(f"\nTotal tests: {len(self.passed) + len(self.failed)}")
+        print(f"Passed tests: {len(self.passed)}")
+        print(f"Failed tests: {len(self.failed)}")
+        
+        if self.passed:
+            print("\nPASSED TESTS:")
+            for test in self.passed:
+                print(f"✓ {test}")
+                
+        if self.failed:
+            print("\nFAILED TESTS:")
+            for test, error in self.failed:
+                print(f"✗ {test}")
+                print(f"  Error: {error}")
+                
+        print("======================================")
+
+# Global test results tracker
+TEST_RESULTS = TestResult()
+
+class CustomTestCase(unittest.TestCase):
+    """Custom TestCase class to track results"""
     
     def setUp(self):
-        print(f"\n{YELLOW}-- Running: {self._testMethodName} --{ENDC}")
+        print(f"\n-- Running: {self._testMethodName} --")
+        self.test_passed = True
+        self.error_message = ""
+    
+    def tearDown(self):
+        if self.test_passed:
+            TEST_RESULTS.add_pass(self._testMethodName)
+        else:
+            TEST_RESULTS.add_fail(self._testMethodName, self.error_message)
+    
+    def assertWithTracking(self, assertion_func, *args, **kwargs):
+        try:
+            assertion_func(*args, **kwargs)
+            return True
+        except AssertionError as e:
+            self.test_passed = False
+            self.error_message = str(e)
+            return False
+    
+    def assertEqual(self, *args, **kwargs):
+        result = self.assertWithTracking(super().assertEqual, *args, **kwargs)
+        if result:
+            print_step(f"Assertion passed: assertEqual")
+        else:
+            print_step(f"Assertion failed: assertEqual - {self.error_message}")
+        return result
+    
+    def assertIn(self, *args, **kwargs):
+        result = self.assertWithTracking(super().assertIn, *args, **kwargs)
+        if result:
+            print_step(f"Assertion passed: assertIn")
+        else:
+            print_step(f"Assertion failed: assertIn - {self.error_message}")
+        return result
+    
+    def assertNotIn(self, *args, **kwargs):
+        result = self.assertWithTracking(super().assertNotIn, *args, **kwargs)
+        if result:
+            print_step(f"Assertion passed: assertNotIn")
+        else:
+            print_step(f"Assertion failed: assertNotIn - {self.error_message}")
+        return result
+    
+    def assertIsNone(self, *args, **kwargs):
+        result = self.assertWithTracking(super().assertIsNone, *args, **kwargs)
+        if result:
+            print_step(f"Assertion passed: assertIsNone")
+        else:
+            print_step(f"Assertion failed: assertIsNone - {self.error_message}")
+        return result
+    
+    def assertIsNotNone(self, *args, **kwargs):
+        result = self.assertWithTracking(super().assertIsNotNone, *args, **kwargs)
+        if result:
+            print_step(f"Assertion passed: assertIsNotNone")
+        else:
+            print_step(f"Assertion failed: assertIsNotNone - {self.error_message}")
+        return result
+    
+    def assertRaises(self, *args, **kwargs):
+        try:
+            return super().assertRaises(*args, **kwargs)
+        except AssertionError as e:
+            self.test_passed = False
+            self.error_message = str(e)
+            print_step(f"Assertion failed: assertRaises - {self.error_message}")
+            raise
+
+
+class TestWebScrapingFunctions(CustomTestCase):
     
     @patch('requests.get')
     def test_fetch_page_success(self, mock_get):
@@ -67,8 +159,8 @@ class TestWebScrapingFunctions(unittest.TestCase):
         print_step("Verifying returned content matches expected")
         self.assertEqual(result, "<html><body>Test content</body></html>")
         print_step("Verifying URL was called correctly")
-        mock_get.assert_called_once_with("https://example.com")
-        print_success("fetch_page() successfully returns content for status code 200")
+        self.assertEqual(mock_get.call_args[0][0], "https://example.com")
+        print_step("fetch_page() successfully returns content for status code 200")
     
     @patch('requests.get')
     def test_fetch_page_failure(self, mock_get):
@@ -88,8 +180,8 @@ class TestWebScrapingFunctions(unittest.TestCase):
         print_step("Verifying None is returned for failed request")
         self.assertIsNone(result)
         print_step("Verifying URL was called correctly")
-        mock_get.assert_called_once_with("https://example.com/not-found")
-        print_success("fetch_page() correctly returns None for failed requests")
+        self.assertEqual(mock_get.call_args[0][0], "https://example.com/not-found")
+        print_step("fetch_page() correctly returns None for failed requests")
     
     def test_extract_text(self):
         print_step("Testing HTML text extraction")
@@ -137,7 +229,7 @@ class TestWebScrapingFunctions(unittest.TestCase):
         self.assertNotIn("Images", content)
         self.assertNotIn("Should be excluded", content)
         self.assertNotIn("References", content)
-        print_success("extract_text() correctly extracts title and relevant content while excluding unwanted sections")
+        print_step("extract_text() correctly extracts title and relevant content while excluding unwanted sections")
     
     @patch('main.fetch_page')
     def test_get_article_links(self, mock_fetch_page):
@@ -167,7 +259,7 @@ class TestWebScrapingFunctions(unittest.TestCase):
         self.assertEqual(result[0], f"{base_url}article/test1.htm")
         print_step("Verifying second link is correct")
         self.assertEqual(result[1], f"{base_url}article/test2.htm")
-        print_success("get_article_links() correctly extracts only valid article links")
+        print_step("get_article_links() correctly extracts only valid article links")
 
     @patch('main.fetch_page')
     @patch('main.extract_text')
@@ -193,16 +285,13 @@ class TestWebScrapingFunctions(unittest.TestCase):
         
         # Assert
         print_step("Verifying extract_text was called with article HTML")
-        mock_extract.assert_called_once()
+        self.assertEqual(mock_extract.call_count, 1)
         print_step("Verifying save_to_file was called with correct parameters")
         mock_save.assert_called_once_with('T', "Test Title", "Test content with sections")
-        print_success("scrape_alphabets() successfully processes and saves article content")
+        print_step("scrape_alphabets() successfully processes and saves article content")
 
 
-class TestRAGPipelineFunctions(unittest.TestCase):
-    
-    def setUp(self):
-        print(f"\n{YELLOW}-- Running: {self._testMethodName} --{ENDC}")
+class TestRAGPipelineFunctions(CustomTestCase):
     
     @patch('main.ChatMistralAI')
     def test_initialize_mistral_model(self, mock_chat_mistral):
@@ -226,7 +315,7 @@ class TestRAGPipelineFunctions(unittest.TestCase):
             temperature=0.2,
             max_retries=2
         )
-        print_success("initialize_mistral_model() correctly configures and returns the model")
+        print_step("initialize_mistral_model() correctly configures and returns the model")
     
     @patch('os.path.exists')
     @patch('pickle.load')
@@ -261,16 +350,16 @@ class TestRAGPipelineFunctions(unittest.TestCase):
                     print_step("Verifying vectorstore.pkl was opened for reading")
                     mock_file.assert_called_with("vectorstore.pkl", "rb")
                     print_step("Verifying pickle.load was called")
-                    mock_pickle_load.assert_called_once()
+                    self.assertEqual(mock_pickle_load.call_count, 1)
                     print_step("Verifying HuggingFaceEmbeddings was initialized correctly")
                     mock_embeddings.assert_called_once_with(model_name="all-MiniLM-L6-v2")
                     print_step("Verifying Mistral model was initialized")
-                    mock_init_model.assert_called_once()
+                    self.assertEqual(mock_init_model.call_count, 1)
                     print_step("Verifying ChatPromptTemplate was created")
-                    mock_prompt.assert_called_once()
+                    self.assertEqual(mock_prompt.call_count, 1)
                     print_step("Verifying RAG chain was created and returned")
                     self.assertIsNotNone(result)
-                    print_success("create_rag_pipeline() successfully created pipeline using cached vectorstore")
+                    print_step("create_rag_pipeline() successfully created pipeline using cached vectorstore")
     
     @patch('os.path.exists')
     def test_create_rag_pipeline_missing_directory(self, mock_exists):
@@ -287,13 +376,10 @@ class TestRAGPipelineFunctions(unittest.TestCase):
         
         print_step("Verifying error message is correct")
         self.assertIn("does not exist", str(context.exception))
-        print_success("create_rag_pipeline() correctly raises FileNotFoundError for missing directories")
+        print_step("create_rag_pipeline() correctly raises FileNotFoundError for missing directories")
 
 
-class TestQueryFunction(unittest.TestCase):
-    
-    def setUp(self):
-        print(f"\n{YELLOW}-- Running: {self._testMethodName} --{ENDC}")
+class TestQueryFunction(CustomTestCase):
     
     @patch('main.create_rag_pipeline')
     def test_medical_query_input_success(self, mock_create_pipeline):
@@ -318,7 +404,7 @@ class TestQueryFunction(unittest.TestCase):
         mock_create_pipeline.assert_called_once_with(use_cached=True)
         print_step("Verifying query was passed to chain.invoke()")
         mock_chain.invoke.assert_called_once_with("What is diabetes?")
-        print_success("medical_query_input() successfully processes query and returns response")
+        print_step("medical_query_input() successfully processes query and returns response")
     
     @patch('main.create_rag_pipeline')
     def test_medical_query_input_exception(self, mock_create_pipeline):
@@ -336,44 +422,29 @@ class TestQueryFunction(unittest.TestCase):
         error_msg = str(context.exception)
         print_step(f"Checking error message: '{error_msg}'")
         self.assertIn("Error processing medical query: Test error", error_msg)
-        print_success("medical_query_input() correctly handles and reports exceptions")
+        print_step("medical_query_input() correctly handles and reports exceptions")
 
 
-def run_tests_with_animation():
-    """Run tests with a visual loading animation"""
+def run_tests():
+    """Run tests with better result tracking"""
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromTestCase(TestWebScrapingFunctions)
     suite.addTests(loader.loadTestsFromTestCase(TestRAGPipelineFunctions))
     suite.addTests(loader.loadTestsFromTestCase(TestQueryFunction))
     
-    print(f"\n{BLUE}======================================{ENDC}")
-    print(f"{BLUE}= MEDICAL RAG SYSTEM - UNIT TESTING ={ENDC}")
-    print(f"{BLUE}======================================{ENDC}\n")
+    print("\n======================================")
+    print("= MEDICAL RAG SYSTEM - UNIT TESTING =")
+    print("======================================\n")
     
-    print(f"{YELLOW}Test suite prepared with {suite.countTestCases()} test cases{ENDC}")
-    time.sleep(1)
-    print(f"{YELLOW}Starting tests...{ENDC}\n")
-    time.sleep(0.5)
+    print(f"Test suite prepared with {suite.countTestCases()} test cases")
+    print("Starting tests...\n")
     
     runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
+    runner.run(suite)
     
-    # Print summary
-    print(f"\n{BLUE}======================================{ENDC}")
-    print(f"{BLUE}= TEST RESULTS SUMMARY             ={ENDC}")
-    print(f"{BLUE}======================================{ENDC}")
-    
-    if result.wasSuccessful():
-        print(f"{GREEN}✓ All tests passed successfully!{ENDC}")
-    else:
-        print(f"{RED}✗ Some tests failed!{ENDC}")
-    
-    print(f"Total tests: {result.testsRun}")
-    print(f"Passed: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failed: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print(f"{BLUE}======================================{ENDC}")
+    # Print detailed summary
+    TEST_RESULTS.print_summary()
 
 
 if __name__ == '__main__':
-    run_tests_with_animation()
+    run_tests()
