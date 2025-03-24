@@ -15,8 +15,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# Set Mistral API key
-os.environ["MISTRAL_API_KEY"] = getpass.getpass("Enter your Mistral API key: ")
+
 
 BASE_URL = "https://medlineplus.gov/ency/"
 
@@ -93,6 +92,7 @@ def scrape_alphabets(alphabets):
 
 # --- LangChain RAG Pipeline Functions ---
 
+
 def initialize_mistral_model():
     """Initializes the Mistral model using LangChain."""
     llm = ChatMistralAI(
@@ -136,8 +136,8 @@ def create_rag_pipeline(data_dir="articles", use_cached=False):
         
         # 2. Text Splitting with Increased Chunk Size and Significant Overlap
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  # Increased from 500 to 1500 as requested
-            chunk_overlap=200,  # Significant overlap (20% of chunk size)
+            chunk_size=1000,  
+            chunk_overlap=200,
             separators=["\n\n", "\n", ". ", " ", ""]
         )
         chunks = text_splitter.split_documents(documents)
@@ -156,7 +156,7 @@ def create_rag_pipeline(data_dir="articles", use_cached=False):
             pickle.dump(vectorstore, f)
     
     # 5. Retriever with increased k for more comprehensive context
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 7})  # Increased from 5 to 7
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 7})  
     
     # 6. LLM
     llm = initialize_mistral_model()
@@ -244,6 +244,31 @@ def query_option():
         print("Error: Vector store not found! Please create embeddings first.")
     except Exception as e:
         print(f"Error processing query: {e}")
+
+def medical_query_input(query_text):
+    """
+    Processes a medical query and returns the response and context.
+    
+    Args:
+        query_text (str): The medical question to be answered
+        
+    Returns:
+        tuple: (answer, context) where answer is the response to the query
+              and context is additional information (if available)
+    """
+    try:
+        # Load the RAG pipeline (will use cached vectorstore if available)
+        rag_chain = create_rag_pipeline(use_cached=True)
+        
+        # Process the query
+        response = rag_chain.invoke(query_text)
+        
+        # For now, return the response and empty context
+        return response, ""
+        
+    except Exception as e:
+        raise Exception(f"Error processing medical query: {e}")
+
 
 # --- Main Program ---
 if __name__ == "__main__":

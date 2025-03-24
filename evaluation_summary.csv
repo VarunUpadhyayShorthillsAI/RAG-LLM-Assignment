@@ -1,0 +1,3 @@
+,rouge_score,cosine_similarity,bert_score_precision,bert_score_recall,bert_score_f1,final_score
+Average,0.34095379046792784,0.8301071956039603,0.7088229178537977,0.6033356221156255,0.6466691579439082,0.616099825489926
+Grade,,,,,,D (Below Average)

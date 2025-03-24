@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from src.query_handler import medical_query_input
+from src.main import medical_query_input
 import torch
 from dotenv import load_dotenv
 from datetime import datetime
@@ -9,6 +9,11 @@ import csv
 # Load environment variables
 load_dotenv()
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
+
+# Get API key from environment variables
+api_key = os.getenv("MISTRAL_API_KEY")
+if api_key:
+    os.environ["MISTRAL_API_KEY"] = api_key
 
 # Set Streamlit page configuration
 st.set_page_config(
@@ -55,16 +60,6 @@ st.markdown(
 # App Title
 st.markdown("<h1>Medical Encyclopedia</h1>", unsafe_allow_html=True)
 
-# Initialize API Key in session state
-if "api_key_saved" not in st.session_state:
-    st.session_state.api_key_saved = False
-
-# Fetch API key from environment
-api_key = os.getenv("MISTRAL_API_KEY")
-if api_key:
-    os.environ["MISTRAL_API_KEY"] = api_key
-    st.session_state.api_key_saved = True
-
 # Function to log Q&A interactions
 def log_qa_interaction(question, answer, log_file="qa_logs.csv"):
     """
@@ -90,7 +85,7 @@ query = st.text_input("Enter your medical question:", placeholder="e.g., What ar
 # Submit button
 if st.button("Get Answer"):
     if query:
-        if st.session_state.api_key_saved:
+        if api_key:
             with st.spinner("Retrieving medical information..."):
                 try:
                     answer, context = medical_query_input(query)
@@ -109,7 +104,7 @@ if st.button("Get Answer"):
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
         else:
-            st.warning("Please set your API key as an environment variable.")
+            st.warning("MISTRAL_API_KEY not found in environment variables. Please add it to your .env file.")
     else: 
         st.warning("Please enter a question.")
 
